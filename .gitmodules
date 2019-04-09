@@ -1,0 +1,6 @@
+[submodule "gym_anki_vector/envs/Mask-RCNN"]
+	path = gym_anki_vector/envs/Mask-RCNN
+	url = https://github.com/beduffy/Mask-RCNN.git
+[submodule "gym_anki_vector/envs/Mask_RCNN"]
+	path = gym_anki_vector/envs/Mask_RCNN
+	url = https://github.com/beduffy/Mask_RCNN.git
