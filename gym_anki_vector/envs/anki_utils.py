@@ -1,11 +1,12 @@
 import random
 import time
 
+import torch
 import matplotlib
-matplotlib.use('agg')
 import matplotlib.pyplot as plt
 from matplotlib import patches,  lines
 from matplotlib.patches import Polygon
+from matplotlib.ticker import NullLocator
 from skimage.measure import find_contours
 import numpy as np
 import cv2
@@ -18,6 +19,92 @@ from anki_vector.events import Events
 from anki_vector.util import degrees, distance_mm, speed_mmps
 from anki_vector.exceptions import VectorUnavailableException
 import colorsys
+
+cmap = plt.get_cmap('tab20b')
+colors = [cmap(i) for i in np.linspace(0, 1, 20)]
+
+classes = [
+    'person',
+    'bicycle',
+    'car',
+    'motorbike',
+    'aeroplane',
+    'bus',
+    'train',
+    'truck',
+    'boat',
+    'traffic light',
+    'fire hydrant',
+    'stop sign',
+    'parking meter',
+    'bench',
+    'bird',
+    'cat',
+    'dog',
+    'horse',
+    'sheep',
+    'cow',
+    'elephant',
+    'bear',
+    'zebra',
+    'giraffe',
+    'backpack',
+    'umbrella',
+    'handbag',
+    'tie',
+    'suitcase',
+    'frisbee',
+    'skis',
+    'snowboard',
+    'sports ball',
+    'kite',
+    'baseball bat',
+    'baseball glove',
+    'skateboard',
+    'surfboard',
+    'tennis racket',
+    'bottle',
+    'wine glass',
+    'cup',
+    'fork',
+    'knife',
+    'spoon',
+    'bowl',
+    'banana',
+    'apple',
+    'sandwich',
+    'orange',
+    'broccoli',
+    'carrot',
+    'hot dog',
+    'pizza',
+    'donut',
+    'cake',
+    'chair',
+    'sofa',
+    'pottedplant',
+    'bed',
+    'diningtable',
+    'toilet',
+    'tvmonitor',
+    'laptop',
+    'mouse',
+    'remote',
+    'keyboard',
+    'cell phone',
+    'microwave',
+    'oven',
+    'toaster',
+    'sink',
+    'refrigerator',
+    'book',
+    'clock',
+    'vase',
+    'scissors',
+    'teddy bear',
+    'hair drier',
+    'toothbrush'
+]
 
 def random_colors(N, bright=True):
     """
@@ -147,20 +234,52 @@ def create_segmented_state(image, result):
 
     return masked_image
 
-def create_image_with_bounding_boxes(raw_state, detections):
+def create_segmented_bbox_image_and_reward(raw_state, detections, get_bbox_dense_reward=True):
+    image = np.zeros_like(raw_state)
+    reward = 0
+
+    if detections and detections[0] is not None:
+        detections = detections[0]  # list because of batch of images but only 1 image here
+
+        if len(detections.size()) > 1:
+            cup_detections = detections[detections[:, -1].type(torch.IntTensor) == 41]
+            # if len(cup_detections.size()) > 1:
+            if cup_detections.size(0) > 0:
+                x1, y1, x2, y2, conf, cls_conf, cls_pred = cup_detections[0]  # todo two cups?
+
+                image[int(y1.item()):int(y2.item()), int(x1.item()):int(x2.item()), :] = 255
+
+                if get_bbox_dense_reward:
+                    area = (y2 - y1) * (x2 - x1)
+                    full_image_area = raw_state.shape[0] * raw_state.shape[1]
+                    reward = area / full_image_area  # reward is normalised bbox area according to max area
+
+    return image, reward
+
+def create_image_with_bounding_boxes(raw_state, detections, img_size):
+    """
+
+    :param raw_state:
+    :param detections:
+    :param img_size: must be square image
+    :param classes
+    :return:
+    """
+    detections = detections[0]  # list because of batch of images but only 1 image here
     # Create plot
     plt.figure()
     fig, ax = plt.subplots(1)
     ax.imshow(raw_state)
 
     # The amount of padding that was added
-    pad_x = max(raw_state.shape[0] - raw_state.shape[1], 0) * (opt.img_size / max(raw_state.shape))
-    pad_y = max(raw_state.shape[1] - raw_state.shape[0], 0) * (opt.img_size / max(raw_state.shape))
+    pad_x = max(raw_state.shape[0] - raw_state.shape[1], 0) * (img_size / max(raw_state.shape))
+    pad_y = max(raw_state.shape[1] - raw_state.shape[0], 0) * (img_size / max(raw_state.shape))
     # Image height and width after padding is removed
-    unpad_h = opt.img_size - pad_y
-    unpad_w = opt.img_size - pad_x
+    unpad_h = img_size - pad_y
+    unpad_w = img_size - pad_x
 
     # Draw bounding boxes and labels of detections
+    #import pdb;pdb.set_trace()
     if detections is not None:
         unique_labels = detections[:, -1].cpu().unique()
         n_cls_preds = len(unique_labels)
@@ -195,8 +314,9 @@ def create_image_with_bounding_boxes(raw_state, detections):
 
     fig.canvas.draw()
 
-    # Now we can save it to a numpy array.
+    # Now we can save it to a numpy array. todo think
     data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
     data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
 
+    # import pdb;pdb.set_trace()
     return data
